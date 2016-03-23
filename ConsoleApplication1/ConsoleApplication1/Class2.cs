@@ -4,39 +4,110 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Net.Sockets;
+using System.Net;
+
 namespace ConsoleApplication1
 {
-   public class Account
+   public class Commande
     {
+       public String name;
+       public String compl;
+        public Func<String, int> Func;
+        
+
+       public Commande(String name, String comp, Func<String, int> func )
+        {
+            this.name = name;
+            this.compl = comp;
+            this.Func = func;
+        }
+    }
+    public class Account
+    {
+
+        
         private Socket _sock;
         // private Thread _thread;
-        private bool _connected;
+        public bool _connected;
+        private List<String> listCommande;
+        
+        private List<Commande> command;
 
-       public Account(Socket socket)
+        private void sendMessage(String str)
+        {
+            byte[] bytesToSend = Encoding.UTF8.GetBytes(str);
+            _sock.BeginSend(bytesToSend, 0, bytesToSend.Length, SocketFlags.None
+                    //       , new AsyncCallback(sendCallback), state);
+        }
+        int RequestHelper(String value,String desc)
+        {
+            int i = 0;
+            switch (value)
+            {
+                case "QUIT":
+                    Console.WriteLine("QUIT QUIT QUIT MOTHER FUCKER");
+                  
+                    i = quitCommande(desc); //because quitcommande return -1
+                    _connected = false;
+                  //   i = -1;
+                     break;
+                default:
+                     break;    
+            }
+            return i;
+        }
+        public void init_command()
+        {
+            listCommande = new List<String>();
+            listCommande.Add("QUIT");
+
+        }
+        public Account(Socket socket)
         {
             _sock = socket;
             _connected = true;
+            command = new List<Commande>();
+       
             //_sock.BeginReceive(sta)
+            init_command();
+        }
+        public int quitCommande(String str)
+        {
+            _sock.Close();
+            return -1;
+        }
+       
+        public Socket getSock()
+        {
+            Socket sock;
+
+            lock(_sock)
+            {
+                sock = _sock;
+            }
+            return sock;
         }
         public void StartThread()
         {
 
             StateObject state = new StateObject();
-            state.workSocket = _sock;
+          //  lock (_sock)
+           // {
+            state.workSocket = _sock; 
             _sock.BeginReceive(state.buffer, 0, StateObject.buffersize, 0, new AsyncCallback(readCallback), state);
-
+            //}
             while (_connected)
             {
-                _connected = IsSocketConnected(_sock);
+               
             }
         }
 
-        static bool IsSocketConnected(Socket s)
+        public bool IsSocketConnected(Socket s)
         {
             return !((s.Poll(1000, SelectMode.SelectRead) && (s.Available == 0)) || !s.Connected);
         }
 
-        static void sendCallback(IAsyncResult ar)
+        public void sendCallback(IAsyncResult ar)
         {
             StateObject state = (StateObject)ar.AsyncState;
             Socket handler = state.workSocket;
@@ -47,51 +118,64 @@ namespace ConsoleApplication1
             handler.BeginReceive(newstate.buffer, 0, StateObject.buffersize, 0, new AsyncCallback(readCallback), newstate);
         }
 
-        static void readCallback(IAsyncResult ar)
+       public void readCallback(IAsyncResult ar)
         {
             StateObject state = (StateObject)ar.AsyncState;
             Socket handler = state.workSocket;
+            IPEndPoint remoteIpEndPoint = handler.RemoteEndPoint as IPEndPoint;
 
+            String debug;
+            Console.WriteLine("RECU");
+            debug = "";
+            if (remoteIpEndPoint != null)
+            {
+                // Using the RemoteEndPoint property.
+                debug += "[" + remoteIpEndPoint.Address + "][" + remoteIpEndPoint.Port + "] : ";
+            }
             if (!IsSocketConnected(handler))
             {
                 handler.Close();
+                debug = "Socket Deconnected \n";
+               Console.WriteLine(debug);
                 return;
             }
 
             int read = handler.EndReceive(ar);
-
+            Console.WriteLine(debug);
             // Data was read from the client socket.
             if (read > 0)
             {
-                Console.WriteLine(state.sb.ToString());
+               
                 state.sb.Append(Encoding.UTF8.GetString(state.buffer, 0, read));
-                if (state.sb.ToString().StartsWith("APOP"))
+                Console.WriteLine(state.sb.ToString());
+                for (int i = 0;i < listCommande.Count; i++)
                 {
+                    if (state.sb.ToString().StartsWith(listCommande[i].ToString()))
+                    {
+                        RequestHelper(listCommande[i].ToString(), state.sb.ToString());
+                        byte[] bytesToSend = Encoding.UTF8.GetBytes(toSend);
+                             handler.BeginSend(bytesToSend, 0, bytesToSend.Length, SocketFlags.None
+                               , new AsyncCallback(sendCallback), state);
 
+                    }
                 }
-            //    if (state.sb.ToString().Contains("<!--ENDSOCKET-->"))
-             //   {
-                    string toSend = "";
-                    string cmd = "";
-
-                    cmd = state.sb.ToString();
-
-                /*switch (cmd)
+              /*  if (state.sb.ToString().StartsWith("QUIT"))
                 {
-                    case "Hi!":
-                        toSend = "How are you?";
-                        break;
-                    case "Milky Way?":
-                        toSend = "No I am not.";
-                        break;
-                }*/
-                Console.WriteLine(cmd);
-                    toSend = cmd;
-                    toSend = "<!--RESPONSE-->" + toSend + "<!--ENDRESPONSE-->";
+                    debug += "[QUIT] \n";
+                    _sock.Close();
+                    _connected = false;
+                    return;
+     
+                }
+                else
+                {
 
-                    byte[] bytesToSend = Encoding.UTF8.GetBytes(toSend);
-                    handler.BeginSend(bytesToSend, 0, bytesToSend.Length, SocketFlags.None
-                        , new AsyncCallback(sendCallback), state);
+                }*/
+              
+                //    if (state.sb.ToString().Contains("<!--ENDSOCKET-->"))
+                //   {
+            
+              //     
              //   }
                // else
                 //{
@@ -102,6 +186,9 @@ namespace ConsoleApplication1
             else
             {
                 handler.Close();
+
+                _connected = false;
+              
             }
         }
 
